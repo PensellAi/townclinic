@@ -5,8 +5,8 @@
  *  - sweep: كل دقيقة بيراجع آخر الحجوزات علشان لو نداء فات
  * مفيش أي مفاتيح سرية: بيستخدم صلاحية حسابك (OAuth).
  */
-var PROJECT_ID = 'PASTE_PROJECT_ID';                       // معرّف مشروع Firebase
-var ADMIN_URL = 'https://PensellAi.github.io/townclinic/admin/'; // رابط لوحة التحكم
+var PROJECT_ID = 'townclinic';                       // معرّف مشروع Firebase
+var ADMIN_URL = 'https://pensellai.github.io/townclinic/admin/'; // رابط لوحة التحكم
 
 var FS = 'https://firestore.googleapis.com/v1/projects/' + PROJECT_ID + '/databases/(default)/documents';
 var MO = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -145,3 +145,6 @@ function val(v) {
   return null;
 }
 function plain(fields) { var o = {}; Object.keys(fields || {}).forEach(function (k) { o[k] = val(fields[k]); }); return o; }
+
+/** فحص الاتصال بقاعدة البيانات */
+function check() { var r = api('get', FS + '/tokens?pageSize=1'); Logger.log('Firestore: ' + r.code + ' ' + r.text.slice(0, 300)); }
