@@ -1,0 +1,87 @@
+rules_version = '2';
+// قواعد أمان تاون كلينك
+// - المرضى: يقروا الأطباء والزيارات والخدمات، وينشئوا حجز أو طلب انتظار بس (ما يقدروش يقروا حجوزات حد).
+// - لوحة التحكم: أي حد له مستند في admins/{uid}. المالك بس يضيف ويوقف الموظفين.
+// - أول حساب مالك: لازم يكون برقم OWNER_PHONE (نفس ownerPhone في public/js/config.js).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function OWNER_EMAIL() { return '01062540279@townclinic.app'; }
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function isOwner() { return isAdmin() && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'owner'; }
+    function str(v, mn, mx) { return v is string && v.size() >= mn && v.size() <= mx; }
+    function phone(v) { return v is string && v.matches('^01[0125][0-9]{8}$'); }
+
+    match /catalog/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /photos/{id}  { allow read: if true; allow write: if isAdmin(); }
+    match /private/{id} { allow read, write: if isAdmin(); }
+
+    match /bookings/{id} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        request.resource.data.keys().hasOnly(['code','visitId','doctorId','name','phone','pay','note','services','fee','status','source','hasReceipt','createdAt'])
+        && request.resource.data.status == 'new'
+        && request.resource.data.source == 'web'
+        && str(request.resource.data.code, 4, 20)
+        && str(request.resource.data.visitId, 1, 80)
+        && str(request.resource.data.doctorId, 1, 80)
+        && str(request.resource.data.name, 2, 80)
+        && phone(request.resource.data.phone)
+        && request.resource.data.pay in ['vf', 'clinic']
+        && str(request.resource.data.note, 0, 500)
+        && request.resource.data.services is list && request.resource.data.services.size() <= 20
+        && request.resource.data.fee is number
+        && request.resource.data.hasReceipt is bool
+        && request.resource.data.createdAt == request.time
+      );
+    }
+    match /receipts/{id} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        request.resource.data.keys().hasOnly(['img','createdAt'])
+        && request.resource.data.img is string
+        && request.resource.data.img.size() < 900000
+        && request.resource.data.img.matches('^data:image/jpeg;base64,.*')
+        && !exists(/databases/$(database)/documents/receipts/$(id))
+        && getAfter(/databases/$(database)/documents/bookings/$(id)).data.hasReceipt == true
+      );
+    }
+    match /waitlist/{id} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        request.resource.data.keys().hasOnly(['code','doctorId','name','phone','gov','center','status','createdAt'])
+        && request.resource.data.status == 'waiting'
+        && str(request.resource.data.code, 3, 20)
+        && str(request.resource.data.doctorId, 1, 80)
+        && str(request.resource.data.name, 2, 80)
+        && phone(request.resource.data.phone)
+        && str(request.resource.data.gov, 2, 40)
+        && str(request.resource.data.center, 0, 40)
+        && request.resource.data.createdAt == request.time
+      );
+    }
+    match /expenses/{id}    { allow read, write: if isAdmin(); }
+    match /svcExpenses/{id} { allow read, write: if isAdmin(); }
+    match /invoices/{id}    { allow read, write: if isAdmin(); }
+    match /tokens/{id}      { allow read, write: if isAdmin(); }
+
+    match /admins/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow update, delete: if isOwner() && uid != request.auth.uid;
+      allow create: if isOwner() || (
+        request.auth.uid == uid
+        && request.auth.token.email == OWNER_EMAIL()
+        && request.resource.data.role == 'owner'
+        && !exists(/databases/$(database)/documents/meta/setup)
+        && existsAfter(/databases/$(database)/documents/meta/setup)
+      );
+    }
+    match /meta/setup {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.auth.token.email == OWNER_EMAIL()
+        && existsAfter(/databases/$(database)/documents/admins/$(request.auth.uid));
+      allow update, delete: if false;
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "لوحة تحكم تاون كلينك",
+  "short_name": "تاون كلينك",
+  "description": "حجوزات ومصاريف وتقارير زيارات تاون كلينك",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F2F6FB",
+  "theme_color": "#0A3A86",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
