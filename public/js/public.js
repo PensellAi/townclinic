@@ -1,8 +1,10 @@
 // صفحة المرضى: الزيارات القادمة + الأطباء + الحجز (بيتسجل مباشرة في Firestore)
-import { db, configured } from "./firebase.js";
+import { db, configured, CFG } from "./firebase.js";
 import { doc, onSnapshot, collection, writeBatch, serverTimestamp, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { $, $$, esc, today, dp, dlong, money, fmtTime, normPhone, validPhone, waLink, place, IC, BASE, photoHTML, toast, copyText, modal, closeModal, geoOptions, bindGeo, compressImage, code } from "./util.js";
 
+// تنبيه فوري للوحة التحكم (Apps Script). لو فشل، المراجعة كل دقيقة بتلحقه.
+function ping(k, id) { const u = CFG.notifyUrl; if (!u || u.startsWith("PASTE")) return; try { fetch(u, { method: "POST", mode: "no-cors", keepalive: true, body: JSON.stringify({ k, id }) }).catch(() => {}); } catch (e) {} }
 const S = { cat: { settings: {}, doctors: [], visits: [], services: [] }, photos: {}, loaded: false, filter: "all", error: "" };
 const setg = (k) => (S.cat.settings || {})[k];
 const docById = (id) => (S.cat.doctors || []).find((d) => d.id === id) || { name: "—", specialty: "" };
@@ -90,7 +92,9 @@ function openNotify(docId) {
       const btn = $("button[type=submit]", ov); btn.disabled = true; er.textContent = "";
       try {
         const c = code("W");
-        await setDoc(doc(collection(db, "waitlist")), { code: c, doctorId: docId, name, phone, gov, center: cen || "", status: "waiting", createdAt: serverTimestamp() });
+        const wref = doc(collection(db, "waitlist"));
+        await setDoc(wref, { code: c, doctorId: docId, name, phone, gov, center: cen || "", status: "waiting", createdAt: serverTimestamp() });
+        ping("w", wref.id);
         modal(`<div class="sh-h"><h2>طلبك اتسجل ✓</h2><button class="x" aria-label="إغلاق">×</button></div><div class="ok-box"><h3>هنكلمك أول ما الميعاد يتحدد</h3><p>أول ما تتحدد زيارة لـ ${esc(d.name)} في ${esc(cen || gov)} هنتواصل معاك على رقم <span class="num">${esc(phone)}</span>.</p><p class="muted">رقم الطلب: <span class="num">${esc(c)}</span></p></div><button class="btn ghost x" style="justify-self:start">تمام</button>`);
       } catch (err) { btn.disabled = false; er.textContent = "الطلب ما اتبعتش. اتأكد من الإنترنت وجرّب تاني."; }
     };
@@ -136,6 +140,7 @@ function openBook(vid, pre = {}) {
         batch.set(ref, { code: c, visitId: v.id, doctorId: v.doctorId, name, phone, pay, note, services, fee: Number(v.fee || 0), status: "new", source: "web", hasReceipt: !!img, createdAt: serverTimestamp() });
         if (img) batch.set(doc(db, "receipts", ref.id), { img, createdAt: serverTimestamp() });
         await batch.commit();
+        ping("b", ref.id);
         done(c, v, d, name, phone, pay, tot());
       } catch (err) {
         btn.disabled = false; btn.textContent = "تأكيد الحجز";

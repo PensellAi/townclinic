@@ -10,7 +10,7 @@
 | لوحة التحكم (PWA) | `public/admin/` + `public/js/admin.js` |
 | الإعدادات (Firebase) | `public/js/config.js` ← الملف الوحيد اللي بيتعدل |
 | قواعد الأمان | `firestore.rules` |
-| إشعارات الحجوزات | `functions/index.js` (Cloud Function) |
+| إشعارات الحجوزات | `apps-script/Code.gs` (Google Apps Script – مجاني) |
 | النشر التلقائي | `.github/workflows/` |
 
 ## خطوات التشغيل لأول مرة
@@ -23,7 +23,7 @@
 4. **Project settings ← General ← Your apps ← Web (</>)** ← سجّل التطبيق وانسخ `firebaseConfig`.
 5. **Project settings ← Cloud Messaging ← Web Push certificates ← Generate key pair** ← انسخ المفتاح (VAPID).
 6. حط القيم في `public/js/config.js`.
-7. **Firestore ← Rules**: الصق محتوى `firestore.rules` ودوس Publish (أو سيبه للـ workflow تحت).
+7. **Firestore ← Rules**: الصق محتوى `firestore.rules` ودوس Publish.
 
 ### 2) GitHub Pages
 - **Settings ← Pages ← Source: GitHub Actions**. أي push على `main` بينشر الموقع أوتوماتيك.
@@ -37,15 +37,16 @@
 - **أندرويد (Chrome)**: افتح رابط `/admin/` ← القائمة ⋮ ← **تثبيت التطبيق**.
 - **آيفون (Safari)**: زرار المشاركة ← **إضافة إلى الشاشة الرئيسية**، وبعدين افتح التطبيق من الأيقونة وفعّل الإشعارات من جواه.
 
-### 5) الإشعارات
-- **من غير أي إعداد إضافي**: تنبيه بصوت وإشعار مع كل حجز طول ما التطبيق مفتوح أو في الخلفية.
-- **إشعار حتى والتطبيق مقفول**: محتاج Cloud Function، ودي محتاجة ترقية المشروع لخطة **Blaze** (بالدفع حسب الاستخدام، وعيادة بحجمكم غالبًا هتفضل في الحد المجاني، بس لازم كارت).
-  بعد الترقية ضيف في GitHub ← Settings ← Secrets and variables ← Actions:
-  - Secret `FIREBASE_SERVICE_ACCOUNT`: من Firebase ← Project settings ← Service accounts ← Generate new private key (الصق محتوى الملف كله)
-  - Variable `FIREBASE_PROJECT_ID`
-  - Variable `ADMIN_URL` = `https://<USER>.github.io/<REPO>/admin/`
-  - Variable `ENABLE_FUNCTIONS` = `true`
-  وبعدين Actions ← **Deploy Firebase** ← Run workflow.
+### 5) الإشعارات (مجانية، من غير خطة Blaze)
+الإشعار بيتبعت من **Google Apps Script** بحساب جوجل صاحب مشروع Firebase:
+1. افتح [script.google.com](https://script.google.com) ← **New project** وسمّيه «Town Clinic Notifier».
+2. ⚙️ Project Settings ← فعّل **Show "appsscript.json" manifest file**.
+3. الصق `apps-script/Code.gs` و`apps-script/appsscript.json`، وعدّل `PROJECT_ID` و`ADMIN_URL` في أول Code.gs.
+4. اختار الدالة **setup** ودوس **Run** ← وافق على الصلاحيات (مرة واحدة).
+5. **Deploy ← New deployment ← Web app** ← Execute as: Me ← Who has access: Anyone ← انسخ رابط الـ Web app وحطه في `notifyUrl` في config.js.
+6. في لوحة التحكم ← الإعدادات ← **تفعيل الإشعارات** على كل موبايل.
+
+صفحة المرضى بتنادي الـ Apps Script لحظة الحجز، ولو النداء فات لأي سبب، المراجعة التلقائية كل دقيقة بتبعت الإشعار.
 
 ## ملاحظات
 - صور التحويلات وصور الأطباء بتتضغط وتتحفظ جوه Firestore (مش Storage) علشان تشتغل على الخطة المجانية.

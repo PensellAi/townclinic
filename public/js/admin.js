@@ -57,7 +57,7 @@ async function enablePush(btn) {
   const perm = await Notification.requestPermission();
   if (perm !== "granted") return toast("الإشعارات متقفلة. افتحها من إعدادات المتصفح للموقع ده.");
   const vapid = CFG.vapidKey && !String(CFG.vapidKey).startsWith("PASTE") ? CFG.vapidKey : "";
-  if (!vapid || !(await isSupported().catch(() => false))) { lsSet("tc-push", "local"); toast("الإشعارات شغالة طول ما التطبيق مفتوح أو في الخلفية"); render(); return; }
+  if (!vapid || !(await isSupported().catch(() => false))) { lsSet("tc-push", "local"); toast("الجهاز ده هيستقبل التنبيهات طول ما التطبيق مفتوح بس"); render(); return; }
   try {
     if (btn) btn.disabled = true;
     const reg = await navigator.serviceWorker.ready;

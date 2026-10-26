@@ -11,6 +11,8 @@ self.TC_CONFIG = {
   },
   // Firebase Console > Project settings > Cloud Messaging > Web Push certificates > Key pair
   vapidKey: "PASTE_VAPID_KEY",
+  // رابط Google Apps Script (Deploy > Web app) اللي بيبعت إشعار لحظة الحجز – ملف apps-script/Code.gs
+  notifyUrl: "PASTE_APPS_SCRIPT_URL",
   // رقم موبايل المالك: الرقم الوحيد اللي يقدر ينشئ أول حساب في لوحة التحكم (لازم يطابق firestore.rules)
   ownerPhone: "01062540279",
   // دومين وهمي بيتحول له رقم الموبايل علشان تسجيل الدخول برقم + باسورد
