@@ -69,8 +69,8 @@ async function enablePush(btn) {
 async function disablePush() { const t = lsGet("tc-push"); if (t && t !== "local") { try { await deleteDoc(ref("tokens", t)); } catch (e) {} } lsSet("tc-push", null); toast("الإشعارات اتقفلت على الجهاز ده"); render(); }
 
 /* ---------- auth ---------- */
-function shell(inner, withNav) {
-  const hdr = `<header class="top"><div class="wrap"><div class="mark"><img src="${BASE}assets/logo-mark.png" alt=""></div><div class="brandtxt"><b>Town<span>Clinic</span></b><small>${withNav ? `<span class="statusdot${S.online ? "" : " off"}"></span> ${S.online ? "متصل – الحجوزات بتوصل لحظيًا" : "مفيش إنترنت"}` : "لوحة التحكم"}</small></div>${withNav ? `<a class="topbtn" href="../" target="_blank" rel="noopener">صفحة المرضى ↗</a>` : ""}</div></header>`;
+function shell(inner, withNav, tabs) {
+  const hdr = `<header class="top"><div class="wrap"><div class="mark"><img src="${BASE}assets/logo-mark.png" alt=""></div><div class="brandtxt"><b>Town<span>Clinic</span></b><small>${withNav ? `<span class="statusdot${S.online ? "" : " off"}"></span> ${S.online ? "متصل – الحجوزات بتوصل لحظيًا" : "مفيش إنترنت"}` : "لوحة التحكم"}</small></div>${withNav ? `<a class="topbtn" href="../" target="_blank" rel="noopener">صفحة المرضى ↗</a>` : ""}</div>${tabs ? `<div class="wrap tabs-wrap">${tabs}</div>` : ""}</header>`;
   return hdr + inner;
 }
 function renderLogin(err) {
@@ -161,9 +161,11 @@ function render() {
   if (!S.cat) h += `<div class="banner" style="margin-top:12px"><span>مفيش بيانات أطباء وزيارات لسه.</span>${isOwner() ? '<button class="btn sm" id="seed">تحميل البيانات الأولية</button>' : ""}</div>`;
   const push = lsGet("tc-push");
   if (!push && "Notification" in window && Notification.permission !== "denied") h += `<div class="banner" style="margin-top:12px"><span>${IC.bell} فعّل الإشعارات علشان يوصلك كل حجز جديد على الجهاز ده.</span><button class="btn sm" id="pushnow">تفعيل الإشعارات</button></div>`;
-  h += `<nav class="tabs" role="tablist">${TABS.map(([k, t]) => { const c = k === "bookings" ? nb : k === "waitlist" ? nw : 0; return `<button class="tab" role="tab" data-tab="${k}" aria-selected="${S.tab === k}">${t}${c ? `<span class="badge num">${c}</span>` : ""}</button>`; }).join("")}</nav><section class="panel">`;
+  const tabs = `<nav class="tabs" role="tablist">${TABS.map(([k, t]) => { const c = k === "bookings" ? nb : k === "waitlist" ? nw : 0; return `<button class="tab" role="tab" data-tab="${k}" aria-selected="${S.tab === k}">${t}${c ? `<span class="badge num">${c}</span>` : ""}</button>`; }).join("")}</nav>`;
+  h += '<section class="panel">';
   h += ({ bookings: tBookings, visits: tVisits, doctors: tDoctors, waitlist: tWait, expenses: tExp, services: tSvc, svcexp: tSvcExp, invoices: tInv, reports: tRep, settings: tSet }[S.tab] || tBookings)();
-  $("#app").innerHTML = shell(h + "</section></div></main>", true);
+  $("#app").innerHTML = shell(h + "</section></div></main>", true, tabs);
+  const sel = $(".tab[aria-selected=true]"); if (sel) sel.scrollIntoView({ block: "nearest", inline: "center" });
   bind();
   S.fresh = {};
 }

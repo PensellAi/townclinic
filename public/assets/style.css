@@ -24,7 +24,6 @@
 *{box-sizing:border-box}
 html{direction:rtl}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;direction:rtl}
-body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--brand)}
 h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.3}
 p{margin:0}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -36,7 +35,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 svg.i{width:18px;height:18px;flex:none;vertical-align:-3px}
 
 /* header */
-.top{background:var(--brand);color:#fff;position:sticky;top:env(safe-area-inset-top,0px);z-index:9}
+.top{background:var(--brand);color:#fff;position:sticky;top:0;z-index:9;padding-top:env(safe-area-inset-top,0px)}
 .top .wrap{display:flex;align-items:center;gap:12px;padding-block:10px}
 .mark{width:44px;height:44px;border-radius:12px;background:#fff;display:grid;place-items:center;overflow:hidden;flex:none}
 .mark img{width:40px;height:40px;object-fit:contain}
@@ -172,6 +171,15 @@ tfoot td{font-weight:700;background:var(--stub)}
 
 /* added for the hosted app */
 .top .wrap{min-height:64px}
+/* التبويبات جوه الشريط العلوي الثابت */
+.top .tabs{border-bottom:0;padding-block:0 8px;scrollbar-width:none}
+.top .tabs::-webkit-scrollbar{display:none}
+.top .tab{color:rgba(255,255,255,.78)}
+.top .tab[aria-selected="true"]{background:#fff;color:var(--brand)}
+.top .tab .badge{background:#FF5A5F}
+.top .tabs-wrap{padding-block:0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .top .tab[aria-selected="true"]{background:var(--brand-2);color:#fff}}
+:root[data-theme="dark"] .top .tab[aria-selected="true"]{background:var(--brand-2);color:#fff}
 .login{min-height:70vh;display:grid;place-items:center;padding-block:30px}
 .login .form{width:100%;max-width:400px;gap:14px}
 .login h1{font-size:22px;color:var(--head)}
