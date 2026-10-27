@@ -10,7 +10,7 @@ import { SEED_CATALOG, SEED_PRIVATE } from "./seed.js";
 const auth = app ? getAuth(app) : null;
 const S = {
   user: null, me: null, cat: null, priv: null, photos: {}, bookings: [], expenses: [], svcExpenses: [], waitlist: [], invoices: [], admins: [],
-  tab: lsGet("tc-tab") || "bookings", bFilter: { visit: "all", st: "open", q: "" }, rep: { mode: "month", val: today().slice(0, 7) },
+  tab: location.hash === "#reminders" ? "reminders" : lsGet("tc-tab") || "bookings", remDay: new Date().toLocaleString("en-US", { timeZone: "Africa/Cairo", hour: "numeric", hour12: false }) < 12 ? "today" : "tomorrow", bFilter: { visit: "all", st: "open", q: "" }, rep: { mode: "month", val: today().slice(0, 7) },
   unsub: [], online: navigator.onLine, pending: false, loginMode: "login", setupDone: true, fresh: {}
 };
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -153,7 +153,7 @@ addEventListener("online", () => { S.online = true; rr(); });
 addEventListener("offline", () => { S.online = false; rr(); });
 
 /* ---------- main render ---------- */
-const TABS = [["bookings", "الحجوزات"], ["visits", "الزيارات"], ["doctors", "الأطباء"], ["waitlist", "انتظار زيارة"], ["expenses", "مصاريف الزيارات"], ["services", "الخدمات والتحاليل"], ["svcexp", "مصاريف الخدمات"], ["invoices", "فواتير الأطباء"], ["reports", "التقارير"], ["settings", "الإعدادات"]];
+const TABS = [["bookings", "الحجوزات"], ["reminders", "تذكير المرضى"], ["visits", "الزيارات"], ["doctors", "الأطباء"], ["waitlist", "انتظار زيارة"], ["expenses", "مصاريف الزيارات"], ["services", "الخدمات والتحاليل"], ["svcexp", "مصاريف الخدمات"], ["invoices", "فواتير الأطباء"], ["reports", "التقارير"], ["settings", "الإعدادات"]];
 function render() {
   if (!S.me) return;
   const nb = S.bookings.filter((b) => b.status === "new").length, nw = S.waitlist.filter((w) => w.status === "waiting").length;
@@ -161,9 +161,9 @@ function render() {
   if (!S.cat) h += `<div class="banner" style="margin-top:12px"><span>مفيش بيانات أطباء وزيارات لسه.</span>${isOwner() ? '<button class="btn sm" id="seed">تحميل البيانات الأولية</button>' : ""}</div>`;
   const push = lsGet("tc-push");
   if (!push && "Notification" in window && Notification.permission !== "denied") h += `<div class="banner" style="margin-top:12px"><span>${IC.bell} فعّل الإشعارات علشان يوصلك كل حجز جديد على الجهاز ده.</span><button class="btn sm" id="pushnow">تفعيل الإشعارات</button></div>`;
-  const tabs = `<nav class="tabs" role="tablist">${TABS.map(([k, t]) => { const c = k === "bookings" ? nb : k === "waitlist" ? nw : 0; return `<button class="tab" role="tab" data-tab="${k}" aria-selected="${S.tab === k}">${t}${c ? `<span class="badge num">${c}</span>` : ""}</button>`; }).join("")}</nav>`;
+  const tabs = `<nav class="tabs" role="tablist">${TABS.map(([k, t]) => { const c = k === "bookings" ? nb : k === "waitlist" ? nw : k === "reminders" ? remPending() : 0; return `<button class="tab" role="tab" data-tab="${k}" aria-selected="${S.tab === k}">${t}${c ? `<span class="badge num">${c}</span>` : ""}</button>`; }).join("")}</nav>`;
   h += '<section class="panel">';
-  h += ({ bookings: tBookings, visits: tVisits, doctors: tDoctors, waitlist: tWait, expenses: tExp, services: tSvc, svcexp: tSvcExp, invoices: tInv, reports: tRep, settings: tSet }[S.tab] || tBookings)();
+  h += ({ bookings: tBookings, reminders: tRem, visits: tVisits, doctors: tDoctors, waitlist: tWait, expenses: tExp, services: tSvc, svcexp: tSvcExp, invoices: tInv, reports: tRep, settings: tSet }[S.tab] || tBookings)();
   $("#app").innerHTML = shell(h + "</section></div></main>", true, tabs);
   const sel = $(".tab[aria-selected=true]"); if (sel) sel.scrollIntoView({ block: "nearest", inline: "center" });
   bind();
@@ -298,9 +298,53 @@ function tRep() {
   }
   return h;
 }
+
+/* ---------- تذكير المرضى ---------- */
+function addMin(t, m) { const [h, mm] = t.split(":").map(Number); const x = h * 60 + mm + m; return String(Math.floor(x / 60) % 24).padStart(2, "0") + ":" + String(x % 60).padStart(2, "0"); }
+function dayAfter(iso, n) { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+const slotOf = (v) => Number(v.slot || PRIV().slotMinutes || 10);
+const startOf = (v) => v.time || PRIV().startTime || "";
+// ترتيب الحجوزات حسب أسبقية الحجز وتقسيم المواعيد من وقت وصول الدكتور
+function schedule(v) {
+  const list = S.bookings.filter((b) => b.visitId === v.id && (b.status === "new" || b.status === "confirmed")).sort((a, b) => tsMillis(a.createdAt) - tsMillis(b.createdAt));
+  const st = startOf(v), sl = slotOf(v);
+  return list.map((b, i) => ({ b, time: st ? addMin(st, i * sl) : "" }));
+}
+function remText(kind, b, v, time) {
+  const first = (b.name || "").trim().split(/\s+/)[0] || "";
+  const dr = docById(v.doctorId).name, where = v.center || v.gov, at = time ? ` الساعة ${fmtTime(time)}` : "";
+  return kind === "d1"
+    ? `مساء الخير ${first}، ميعاد كشفك بكرة ${dp(v.date).wd} بإذن الله مع ${dr} في ${where}${at}. – تاون كلينك`
+    : `صباح الخير ${first}، بنفكّرك إن ميعاد كشفك النهارده بإذن الله مع ${dr} في ${where}${at}. – تاون كلينك`;
+}
+function remDayInfo(which) { const t = today(); return which === "today" ? { day: t, kind: "d0", field: "rem0", label: "النهارده" } : { day: dayAfter(t, 1), kind: "d1", field: "rem1", label: "بكرة" }; }
+function remCount(which) { const { day, field } = remDayInfo(which); let n = 0; (CAT().visits || []).filter((v) => v.date === day).forEach((v) => schedule(v).forEach((x) => { if (!x.b[field] && x.b.phone) n++; })); return n; }
+function remPending() { return remCount("today") + remCount("tomorrow"); }
+function tRem() {
+  const info = remDayInfo(S.remDay);
+  const vs = (CAT().visits || []).filter((v) => v.date === info.day && v.status !== "hidden").sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+  let h = `<div class="filters" style="padding:0">${[["tomorrow", "مرضى بكرة"], ["today", "مرضى النهارده"]].map(([k, t]) => { const n = remCount(k); return `<button class="chip" data-rd="${k}" aria-pressed="${S.remDay === k}">${t}${n ? ` <span class="badge num">${n}</span>` : ""}</button>`; }).join("")}</div>
+  <p class="muted" style="font-size:14px">المواعيد بتتقسم حسب أسبقية الحجز من وقت وصول الدكتور. دوس «إرسال» يفتح واتساب برسالة جاهزة، والمريض بيتعلّم «اتبعت». ${S.remDay === "tomorrow" ? "الإشعار بيوصلك الساعة ٨ بالليل." : "الإشعار بيوصلك الساعة ٨ الصبح."}</p>`;
+  if (!vs.length) return h + `<div class="empty">مفيش زيارات ${info.label} (${esc(dlong(info.day))}).</div>`;
+  vs.forEach((v) => {
+    const d = docById(v.doctorId), sch = schedule(v), sent = sch.filter((x) => x.b[info.field]).length, st = startOf(v), sl = slotOf(v);
+    h += `<div class="item"><div class="item-h"><div class="doc">${photo(d)}<div><b>${esc(d.name)}</b><div class="kv"><span>${esc(place(v))}</span><span>${esc(dlong(v.date))}</span><span>${sch.length} حجز</span><span>اتبعت <b class="num">${sent}/${sch.length}</b></span></div></div></div></div>
+    <div class="bar"><label class="muted" style="font-size:13px" for="vs-${esc(v.id)}">وصول الدكتور</label><input class="in num" style="max-width:130px;flex:0 1 130px" type="time" id="vs-${esc(v.id)}" data-vstart="${esc(v.id)}" value="${esc(st)}">
+    <label class="muted" style="font-size:13px" for="vl-${esc(v.id)}">مدة الكشف</label><select class="in" style="max-width:120px;flex:0 1 120px" id="vl-${esc(v.id)}" data-vslot="${esc(v.id)}">${[5, 10, 15, 20, 30].map((m) => `<option value="${m}"${m === sl ? " selected" : ""}>${m} دقايق</option>`).join("")}</select>
+    ${st && sch.length ? `<span class="muted" style="font-size:13px">آخر كشف ${esc(fmtTime(addMin(st, (sch.length - 1) * sl)))}</span>` : ""}</div>
+    ${!st ? '<p class="note">حدد وقت وصول الدكتور علشان المواعيد تتقسم وتظهر في الرسالة.</p>' : ""}
+    ${!sch.length ? '<p class="muted">مفيش حجوزات مؤكدة أو جديدة للزيارة دي.</p>' : '<div class="rem-list">' + sch.map((x, i) => {
+      const b = x.b, done = b[info.field], msg = remText(info.kind, b, v, x.time);
+      return `<div class="rem-row"><span class="slot num">${x.time ? esc(fmtTime(x.time)) : "—"}</span><div class="rem-who"><b>${i + 1}. ${esc(b.name)}</b> <span class="num muted">${esc(b.phone || "بدون رقم")}</span> ${done ? `<span class="pill st-done">اتبعت ✓</span>` : ""}${b.slotTime && b.slotTime !== x.time && done ? `<span class="pill st-confirmed">اتبعتله ${esc(fmtTime(b.slotTime))} – الميعاد اتغير</span>` : ""}</div>
+      ${b.phone ? `<div class="bar"><a class="btn ${done ? "ghost" : "wa"} sm" target="_blank" rel="noopener" href="${waLink(b.phone, msg)}" data-rem="${esc(b.id)}" data-remf="${info.field}" data-slot="${esc(x.time)}">${IC.wa} ${done ? "إرسال تاني" : "إرسال"}</a><button class="btn ghost sm" data-cpmsg="${esc(msg)}" aria-label="نسخ الرسالة">${IC.copy}</button></div>` : ""}</div>`;
+    }).join("") + "</div>"}</div>`;
+  });
+  return h;
+}
+
 function tSet() {
   const s = CAT().settings || {}, push = lsGet("tc-push");
-  let h = `<form class="form" id="setf"><h2 class="h">بيانات التواصل في الموقع</h2><div class="row2"><div class="f"><label for="s-wa">رقم واتساب الحجوزات</label><input class="in num" id="s-wa" value="${esc(s.whatsapp || "")}"></div><div class="f"><label for="s-vf">رقم فودافون كاش</label><input class="in num" id="s-vf" value="${esc(s.vfcash || "")}"></div></div><div class="f"><label for="s-ph">أرقام التواصل (افصل بفاصلة)</label><input class="in num" id="s-ph" value="${esc((s.phones || []).join(", "))}"></div><div class="f"><label for="s-sh">نسبة الدكتور الافتراضية ٪</label><input class="in num" style="max-width:120px" id="s-sh" type="number" min="0" max="100" value="${esc(PRIV().defaultShare ?? 50)}"></div><button class="btn" type="submit" style="justify-self:start">حفظ</button></form>`;
+  let h = `<form class="form" id="setf"><h2 class="h">بيانات التواصل في الموقع</h2><div class="row2"><div class="f"><label for="s-wa">رقم واتساب الحجوزات</label><input class="in num" id="s-wa" value="${esc(s.whatsapp || "")}"></div><div class="f"><label for="s-vf">رقم فودافون كاش</label><input class="in num" id="s-vf" value="${esc(s.vfcash || "")}"></div></div><div class="f"><label for="s-ph">أرقام التواصل (افصل بفاصلة)</label><input class="in num" id="s-ph" value="${esc((s.phones || []).join(", "))}"></div><div class="f"><label for="s-sh">نسبة الدكتور الافتراضية ٪</label><input class="in num" style="max-width:120px" id="s-sh" type="number" min="0" max="100" value="${esc(PRIV().defaultShare ?? 50)}"></div><h2 class="h">مواعيد الكشف (للتذكيرات)</h2><div class="row2"><div class="f"><label for="s-st">وقت وصول الدكتور الافتراضي</label><input class="in num" type="time" id="s-st" value="${esc(PRIV().startTime || "")}"></div><div class="f"><label for="s-sl">مدة الكشف الافتراضية</label><select class="in" id="s-sl">${[5, 10, 15, 20, 30].map((m) => `<option value="${m}"${m === Number(PRIV().slotMinutes || 10) ? " selected" : ""}>${m} دقايق</option>`).join("")}</select></div></div><p class="muted" style="font-size:13px">تقدر تغيّر الوقت والمدة لكل زيارة لوحدها من تبويب «تذكير المرضى».</p><button class="btn" type="submit" style="justify-self:start">حفظ</button></form>`;
   h += `<div class="form"><h2 class="h">الإشعارات على الجهاز ده</h2><p class="muted" style="font-size:14px">${push ? (push === "local" ? "شغالة طول ما التطبيق مفتوح." : "شغالة: هيوصلك إشعار مع كل حجز حتى لو التطبيق مقفول.") : "مقفولة."} على الآيفون لازم تثبّت التطبيق الأول: من Safari دوس مشاركة ← «إضافة إلى الشاشة الرئيسية».</p><div class="bar">${push ? '<button class="btn ghost" id="pushoff">إيقاف الإشعارات</button><button class="btn ghost" id="pushtest">تجربة صوت التنبيه</button>' : '<button class="btn" id="pushon">تفعيل الإشعارات</button>'}</div></div>`;
   if (isOwner()) {
     h += `<div class="form"><h2 class="h">حسابات الموظفين</h2><div class="list">${S.admins.map((a) => `<div class="item-h"><span><b>${esc(a.name)}</b> <span class="num muted">${esc(a.phone)}</span> <span class="pill ${a.role === "owner" ? "st-done" : "st-new"}">${a.role === "owner" ? "مالك" : "موظف"}</span></span>${a.role !== "owner" ? `<button class="stbtn" data-adel="${esc(a.id)}" style="color:var(--bad)">إيقاف الحساب</button>` : ""}</div>`).join("")}</div>
@@ -334,6 +378,13 @@ function bind() {
   $$("[data-rcv]").forEach((b) => (b.onclick = () => showReceipt(b.dataset.rcv)));
   $$("[data-rc]").forEach((i) => (i.onchange = async () => { const f = i.files[0]; if (!f) return; try { toast("جاري الرفع…"); const img = await compressImage(f); await setDoc(ref("receipts", i.dataset.rc), { img, createdAt: serverTimestamp() }); await updateDoc(ref("bookings", i.dataset.rc), { hasReceipt: true }); toast("اترفعت ✓"); } catch (e) { fail(e); } }));
   on("#manual", (b) => (b.onclick = manualBooking));
+
+  // تذكير المرضى
+  $$("[data-rd]").forEach((b) => (b.onclick = () => { S.remDay = b.dataset.rd; render(); }));
+  $$("[data-vstart]").forEach((i) => (i.onchange = () => { const v = S.cat.visits.find((x) => x.id === i.dataset.vstart); if (!v) return; v.time = i.value; saveCat("اتحفظ وقت الوصول ✓"); }));
+  $$("[data-vslot]").forEach((i) => (i.onchange = () => { const v = S.cat.visits.find((x) => x.id === i.dataset.vslot); if (!v) return; v.slot = Number(i.value); saveCat("اتحفظت مدة الكشف ✓"); }));
+  $$("[data-rem]").forEach((a) => a.addEventListener("click", () => { updateDoc(ref("bookings", a.dataset.rem), { [a.dataset.remf]: serverTimestamp(), slotTime: a.dataset.slot || "" }).catch(fail); }));
+  $$("[data-cpmsg]").forEach((b) => (b.onclick = () => copyText(b.dataset.cpmsg, b)));
   // الزيارات والأطباء
   on("#addv", (b) => (b.onclick = () => editVisit(null)));
   $$("[data-ev]").forEach((b) => (b.onclick = () => editVisit(b.dataset.ev)));
@@ -365,7 +416,7 @@ function bind() {
   $$("[data-rm]").forEach((b) => (b.onclick = () => { const m = b.dataset.rm, t = today(); S.rep = { mode: m, val: m === "day" ? t : m === "month" ? t.slice(0, 7) : t.slice(0, 4) }; render(); }));
   on("#rv", (el) => (el.onchange = () => { if (el.value) { S.rep.val = String(el.value); render(); } }));
   // الإعدادات
-  on("#setf", (f) => (f.onsubmit = async (e) => { e.preventDefault(); S.cat.settings = { whatsapp: normPhone($("#s-wa").value), vfcash: normPhone($("#s-vf").value), phones: $("#s-ph").value.split(/[,،]/).map(normPhone).filter(Boolean) }; S.priv = S.priv || JSON.parse(JSON.stringify(SEED_PRIVATE)); S.priv.defaultShare = Number($("#s-sh").value || 50); await savePriv(); saveCat(); }));
+  on("#setf", (f) => (f.onsubmit = async (e) => { e.preventDefault(); S.cat.settings = { whatsapp: normPhone($("#s-wa").value), vfcash: normPhone($("#s-vf").value), phones: $("#s-ph").value.split(/[,،]/).map(normPhone).filter(Boolean) }; S.priv = S.priv || JSON.parse(JSON.stringify(SEED_PRIVATE)); S.priv.defaultShare = Number($("#s-sh").value || 50); S.priv.startTime = $("#s-st").value; S.priv.slotMinutes = Number($("#s-sl").value || 10); await savePriv(); saveCat(); }));
   on("#stf", (f) => (f.onsubmit = addStaff));
   $$("[data-adel]").forEach((b) => (b.onclick = () => confirmInline(b, () => deleteDoc(ref("admins", b.dataset.adel)).then(() => toast("الحساب اتوقف"), fail))));
   on("#pwf", (f) => (f.onsubmit = async (e) => { e.preventDefault(); const er = $("#pw-e"), o = $("#pw-o").value, n = $("#pw-n").value; if (n.length < 6) return (er.textContent = "كلمة السر الجديدة 6 على الأقل"); try { await reauthenticateWithCredential(S.user, EmailAuthProvider.credential(S.user.email, o)); await updatePassword(S.user, n); er.textContent = ""; toast("كلمة السر اتغيرت ✓"); f.reset(); } catch (err) { er.textContent = (err.code || "").includes("credential") ? "كلمة السر الحالية غلط" : "ما اتغيرتش: " + (err.code || ""); } }));
@@ -449,6 +500,7 @@ function makeInvoice(docId) {
 }
 
 /* ---------- boot ---------- */
+addEventListener("hashchange", () => { if (location.hash === "#reminders" && S.me) { S.tab = "reminders"; render(); } });
 if (!configured) {
   $("#app").innerHTML = shell('<div class="wrap"><div class="cfgwarn">لوحة التحكم لسه محتاجة ربط بمشروع Firebase. عدّل ملف js/config.js زي ما مكتوب في README.</div></div>', false);
 } else {

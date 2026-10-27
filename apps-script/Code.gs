@@ -15,6 +15,8 @@ var MO = ['يناير','فبراير','مارس','أبريل','مايو','يون
 function setup() {
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('sweep').timeBased().everyMinutes(1).create();
+  ScriptApp.newTrigger('eveningReminder').timeBased().atHour(20).everyDays(1).inTimezone('Africa/Cairo').create();
+  ScriptApp.newTrigger('morningReminder').timeBased().atHour(8).everyDays(1).inTimezone('Africa/Cairo').create();
   var n = listTokens().length;
   Logger.log('تمام ✓ المراجعة كل دقيقة اشتغلت. الأجهزة المسجلة للإشعارات: ' + n);
   if (n) sendAll('تاون كلينك', 'الإشعارات شغالة ✓', 'setup');
@@ -69,7 +71,7 @@ function notify(col, d) {
   mark(col, id);
 }
 
-function sendAll(title, body, tag) {
+function sendAll(title, body, tag, link) {
   listTokens().forEach(function (t) {
     var r = api('post', 'https://fcm.googleapis.com/v1/projects/' + PROJECT_ID + '/messages:send', {
       message: {
@@ -77,7 +79,7 @@ function sendAll(title, body, tag) {
         webpush: {
           headers: { Urgency: 'high', TTL: '86400' },
           notification: { title: title, body: body, tag: tag, renotify: true, lang: 'ar', dir: 'rtl', icon: ADMIN_URL + 'icons/icon-192.png', badge: ADMIN_URL + 'icons/badge-72.png' },
-          fcm_options: { link: ADMIN_URL }
+          fcm_options: { link: link || ADMIN_URL }
         }
       }
     });
@@ -148,3 +150,30 @@ function plain(fields) { var o = {}; Object.keys(fields || {}).forEach(function 
 
 /** فحص الاتصال بقاعدة البيانات */
 function check() { var r = api('get', FS + '/tokens?pageSize=1'); Logger.log('Firestore: ' + r.code + ' ' + r.text.slice(0, 300)); }
+
+/* ---- تذكير المرضى: إشعار للعيادة الساعة ٨ بالليل (مرضى بكرة) و٨ الصبح (مرضى النهارده) ---- */
+function eveningReminder() { remindPush(1, 'rem1', 'تذكير مرضى بكرة'); }
+function morningReminder() { remindPush(0, 'rem0', 'تذكير مرضى النهارده'); }
+function cairoDate(offset) { return Utilities.formatDate(new Date(Date.now() + offset * 86400000), 'Africa/Cairo', 'yyyy-MM-dd'); }
+function remindPush(offset, field, title) {
+  var day = cairoDate(offset), cat = catalog();
+  var vs = (cat.visits || []).filter(function (v) { return v.date === day && v.status !== 'hidden'; });
+  if (!vs.length) return;
+  var pending = 0;
+  vs.forEach(function (v) {
+    var r = api('post', FS + ':runQuery', { structuredQuery: {
+      from: [{ collectionId: 'bookings' }],
+      where: { fieldFilter: { field: { fieldPath: 'visitId' }, op: 'EQUAL', value: { stringValue: v.id } } },
+      limit: 500
+    } });
+    if (r.code !== 200) { console.warn('remind ' + r.code + ': ' + r.text); return; }
+    JSON.parse(r.text).forEach(function (x) {
+      if (!x.document) return;
+      var f = plain(x.document.fields);
+      if ((f.status === 'new' || f.status === 'confirmed') && f.phone && !f[field]) pending++;
+    });
+  });
+  if (!pending) return;
+  var where = vs.map(function (v) { return v.center || v.gov; }).join('، ');
+  sendAll(title, 'عندك ' + pending + ' تذكير محتاج يتبعت (' + where + '). دوس هنا علشان تبعتهم.', 'rem_' + day, ADMIN_URL + '#reminders');
+}

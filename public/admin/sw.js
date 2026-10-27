@@ -18,6 +18,7 @@ self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener("fetch", () => {}); // الشبكة مباشرة؛ مفيش كاش علشان البيانات تفضل حية
 
 self.addEventListener("notificationclick", (e) => {
+  if (e.notification.data && e.notification.data.FCM_MSG) return; // إشعارات FCM بيفتحها الـ SDK على اللينك بتاعها
   e.notification.close();
   const url = new URL("./", self.registration.scope).href;
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => {

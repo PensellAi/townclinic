@@ -198,3 +198,10 @@ tfoot td{font-weight:700;background:var(--stub)}
 .kpi .sub{font-size:12px;color:var(--muted)}
 .kpi.main .sub{color:rgba(255,255,255,.8)}
 h2.h{font-size:17px;color:var(--head)}
+
+/* تذكير المرضى */
+.rem-list{display:grid;gap:0}
+.rem-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-block:8px}
+.rem-row .slot{font-weight:700;background:var(--chip);color:var(--head);border-radius:8px;padding:4px 8px;min-width:74px;text-align:center;direction:rtl}
+.rem-who{flex:1 1 200px;min-width:0}
+.rem-row .bar{flex-wrap:nowrap}
